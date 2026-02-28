@@ -253,6 +253,120 @@
             );
         }
 
+        // ─── COMPOSANT GRAPHIQUE NPSH ──────────────────────────────────────────────
+        function NPSHChart({ aspirQ, aspirD, aspirL, aspirMat, raccords, hz, temp, altitude, npshr }) {
+            const canvasRef = useRef(null);
+            const chartRef  = useRef(null);
+            const sig = `${aspirQ}-${aspirD}-${aspirL}-${aspirMat}-${hz}-${temp}-${altitude}-${npshr}-${raccords.map(r => `${r.xi}x${r.quantite}`).join('_')}`;
+
+            useEffect(() => {
+                const ctx = canvasRef.current.getContext('2d');
+                if (chartRef.current) { chartRef.current.destroy(); }
+
+                const Q0    = parseFloat(aspirQ);
+                const D     = parseFloat(aspirD);
+                const L     = parseFloat(aspirL);
+                const T     = parseFloat(temp)     || 20;
+                const alt   = parseFloat(altitude) || 0;
+                const Hz    = parseFloat(hz);
+                const maxQ  = Q0 * 2 || 20;
+                const steps = 40;
+                const S     = Math.PI * Math.pow((D / 1000) / 2, 2);
+                const Pv    = calcPv(T);
+                const rho   = calcRho(T);
+                const Pa    = calcPa(alt);
+
+                const labels = [], npshData = [];
+
+                for (let i = 0; i <= steps; i++) {
+                    const q = (maxQ / steps) * i;
+                    labels.push(q.toFixed(1));
+                    if (q === 0) { npshData.push(null); continue; }
+                    const pdc   = calculatePDC(D, L, q, parseFloat(aspirMat));
+                    const V     = (q / 3600) / S;
+                    const HfSg  = raccords.reduce((s, r) => s + r.quantite * r.xi * V * V / (2 * 9.81), 0);
+                    const npshd = (Pa - Pv) / (rho * 9.81) + Hz - pdc.perte - HfSg;
+                    npshData.push(parseFloat(npshd.toFixed(3)));
+                }
+
+                const datasets = [{
+                    label: 'NPSHd (m)',
+                    data: npshData,
+                    borderColor: '#0ea5e9',
+                    backgroundColor: 'rgba(14,165,233,0.08)',
+                    borderWidth: 3,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.4
+                }];
+
+                // Ligne NPSHr horizontale (si renseignée)
+                const nr = parseFloat(npshr);
+                if (npshr !== '' && !isNaN(nr)) {
+                    datasets.push({
+                        label: 'NPSHr constructeur',
+                        data: labels.map(() => nr),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0
+                    });
+                }
+
+                // Point de fonctionnement
+                const V0     = (Q0 / 3600) / S;
+                const pdc0   = calculatePDC(D, L, Q0, parseFloat(aspirMat));
+                const HfSg0  = raccords.reduce((s, r) => s + r.quantite * r.xi * V0 * V0 / (2 * 9.81), 0);
+                const npshd0 = (Pa - Pv) / (rho * 9.81) + Hz - pdc0.perte - HfSg0;
+                datasets.push({
+                    label: 'Point de fonctionnement',
+                    data: labels.map((l, i) => {
+                        const q = (maxQ / steps) * i;
+                        return Math.abs(q - Q0) < maxQ / steps / 2 ? parseFloat(npshd0.toFixed(3)) : null;
+                    }),
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b',
+                    borderWidth: 0,
+                    pointRadius: labels.map((l, i) => {
+                        const q = (maxQ / steps) * i;
+                        return Math.abs(q - Q0) < maxQ / steps / 2 ? 7 : 0;
+                    }),
+                    pointStyle: 'circle',
+                    fill: false,
+                    showLine: false
+                });
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels, datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: npshr !== '',
+                                labels: { boxWidth: 20, font: { size: 10 } }
+                            }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Débit (m³/h)' } },
+                            y: { title: { display: true, text: 'NPSH (m)' }, beginAtZero: false }
+                        }
+                    }
+                });
+                return () => { if (chartRef.current) { chartRef.current.destroy(); } };
+            }, [sig]);
+
+            return (
+                <div className="bg-white rounded-3xl p-4 shadow-xl border border-slate-100 h-72">
+                    <h3 className="text-sm font-bold text-slate-700 mb-2 uppercase text-center italic">Courbe NPSHd = f(Débit)</h3>
+                    <div className="h-full pb-8"><canvas ref={canvasRef}></canvas></div>
+                </div>
+            );
+        }
+
         // ─── COMPOSANT SECTION NPSH ─────────────────────────────────────────────────
         function NPSHSection() {
             const nextRaccordId = useRef(2);
@@ -416,6 +530,11 @@
 
                     {/* Résultat NPSH */}
                     {npshResult && (
+                        <>
+                        <NPSHChart
+                            aspirQ={aspirQ} aspirD={aspirD} aspirL={aspirL} aspirMat={aspirMat}
+                            raccords={raccords} hz={hz} temp={temp} altitude={altitude} npshr={npshr}
+                        />
                         <div className="bg-slate-800 rounded-3xl p-6 text-white shadow-xl space-y-4">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Résultat NPSH</h3>
 
@@ -460,6 +579,7 @@
                                 <p>Vitesse aspiration : <strong className="text-slate-300">{npshResult.V.toFixed(2)} m/s</strong></p>
                             </div>
                         </div>
+                        </>
                     )}
 
                     {/* Note méthode */}
