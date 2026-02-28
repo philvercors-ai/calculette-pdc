@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="Calculateur de pertes de charge avec graphique interactif.">
+    <meta name="description" content="Calculateur de pertes de charge et NPSH avec graphique interactif.">
     <meta name="theme-color" content="#0ea5e9">
 
     <meta name="mobile-web-app-capable" content="yes">
@@ -38,7 +38,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- CONSTANTES MATÉRIAUX (hors composant pour éviter recréation) ---
+        // ─── CONSTANTES MATÉRIAUX ───────────────────────────────────────────────────
         const MATERIAUX = {
             "Fonte neuve":               "0.26",
             "Fonte usagée":              "1.0",
@@ -54,7 +54,25 @@
         };
         const DEFAULT_MATERIAU = "0.26";
 
-        // --- FONCTION DE CALCUL PURE ---
+        // ─── CONSTANTES RACCORDS SINGULIERS ────────────────────────────────────────
+        const RACCORDS = [
+            { nom: "Entrée conduite (bord vif)",     xi: 0.50 },
+            { nom: "Entrée conduite (bord arrondi)", xi: 0.10 },
+            { nom: "Coude 90° (R/D = 1)",            xi: 0.50 },
+            { nom: "Coude 90° (R/D = 2)",            xi: 0.30 },
+            { nom: "Coude 45°",                      xi: 0.20 },
+            { nom: "Vanne à opercule (ouverte)",     xi: 0.15 },
+            { nom: "Vanne papillon (ouverte)",       xi: 0.30 },
+            { nom: "Vanne à soupape (½ ouv.)",       xi: 5.00 },
+            { nom: "Clapet pied crépine",            xi: 2.50 },
+            { nom: "Clapet anti-retour battant",     xi: 1.00 },
+            { nom: "Té passage direct",              xi: 0.30 },
+            { nom: "Té dérivation",                  xi: 1.00 },
+            { nom: "Réduction progressive",          xi: 0.10 },
+            { nom: "Réduction brusque",              xi: 0.50 },
+        ];
+
+        // ─── FONCTIONS DE CALCUL PDC ────────────────────────────────────────────────
         function calculatePDC(d_mm, l_m, q_m3h, k_mm) {
             const D = d_mm / 1000;
             const L = l_m;
@@ -84,93 +102,60 @@
             else if (Re < 4000) regime = 'Transitoire';
             else                regime = 'Turbulent';
 
-            return {
-                vitesse: V,
-                perte: J,
-                unitaire: (J / L) * 1000,
-                Re: Math.round(Re),
-                regime
-            };
+            return { vitesse: V, perte: J, unitaire: (J / L) * 1000, Re: Math.round(Re), regime };
         }
 
-        // --- COMPOSANT CARTE TRONÇON ---
+        // ─── FONCTIONS PHYSIQUES NPSH ───────────────────────────────────────────────
+        function calcPv(T)  { return 610.78 * Math.exp(17.269 * T / (237.3 + T)); }
+        function calcRho(T) { return 999.842 + 0.0685 * T - 0.00737 * T * T; }
+        function calcPa(alt){ return 101325 * Math.pow(1 - 2.25577e-5 * alt, 5.25588); }
+
+        // ─── COMPOSANT TRONÇON PDC ──────────────────────────────────────────────────
         function TronconCard({ troncon, index, total, onUpdate, onRemove, resultat }) {
             const V = resultat ? resultat.vitesse : null;
-
             let alerteBadge = null;
             if (V !== null) {
-                if (V < 0.5) {
-                    alerteBadge = (
-                        <span className="inline-block bg-orange-100 text-orange-700 border border-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            ⚠ Vitesse faible — risque de dépôts
-                        </span>
-                    );
-                } else if (V > 3) {
-                    alerteBadge = (
-                        <span className="inline-block bg-red-100 text-red-700 border border-red-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            ⚠ Vitesse élevée — risque d'érosion
-                        </span>
-                    );
-                }
+                if (V < 0.5)
+                    alerteBadge = <span className="inline-block bg-orange-100 text-orange-700 border border-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full">⚠ Vitesse faible — risque de dépôts</span>;
+                else if (V > 3)
+                    alerteBadge = <span className="inline-block bg-red-100 text-red-700 border border-red-300 text-[10px] font-bold px-2 py-0.5 rounded-full">⚠ Vitesse élevée — risque d'érosion</span>;
             }
-
-            const regimeColor =
-                !resultat ? '' :
+            const regimeColor = !resultat ? '' :
                 resultat.regime === 'Laminaire'   ? 'text-green-600' :
-                resultat.regime === 'Transitoire' ? 'text-orange-500' :
-                                                    'text-sky-600';
+                resultat.regime === 'Transitoire' ? 'text-orange-500' : 'text-sky-600';
 
             return (
                 <div className="bg-white rounded-3xl p-5 shadow-lg border border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-black text-sky-600 uppercase tracking-wide">
-                            Tronçon {index + 1}
-                        </h3>
+                        <h3 className="text-sm font-black text-sky-600 uppercase tracking-wide">Tronçon {index + 1}</h3>
                         {total > 1 && (
-                            <button
-                                onClick={onRemove}
-                                className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-100 active:scale-95 transition-all text-xl font-bold leading-none"
-                                aria-label="Supprimer ce tronçon"
-                            >
-                                ×
-                            </button>
+                            <button onClick={onRemove}
+                                className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-100 active:scale-95 transition-all text-xl font-bold leading-none">×</button>
                         )}
                     </div>
-
                     <div>
                         <label className="text-xs font-bold text-sky-600 uppercase ml-2">Matériau (Rugosité k)</label>
-                        <select
-                            className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
-                            value={troncon.materiau}
-                            onChange={e => onUpdate('materiau', e.target.value)}
-                        >
+                        <select className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                            value={troncon.materiau} onChange={e => onUpdate('materiau', e.target.value)}>
                             {Object.entries(MATERIAUX).map(([nom, val]) => (
                                 <option key={nom} value={val}>{nom} — [k = {val} mm]</option>
                             ))}
                         </select>
                     </div>
-
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase ml-2">Ø Int (mm)</label>
-                            <input
-                                type="number" inputMode="decimal" placeholder="110"
-                                value={troncon.diametre}
+                            <input type="number" inputMode="decimal" placeholder="110" value={troncon.diametre}
                                 className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
-                                onChange={e => onUpdate('diametre', e.target.value)}
-                            />
+                                onChange={e => onUpdate('diametre', e.target.value)} />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase ml-2">Long (m)</label>
-                            <input
-                                type="number" inputMode="decimal" placeholder="100"
-                                value={troncon.longueur}
+                            <input type="number" inputMode="decimal" placeholder="100" value={troncon.longueur}
                                 className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
-                                onChange={e => onUpdate('longueur', e.target.value)}
-                            />
+                                onChange={e => onUpdate('longueur', e.target.value)} />
                         </div>
                     </div>
-
                     {resultat && (
                         <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
                             {alerteBadge && <div>{alerteBadge}</div>}
@@ -199,16 +184,14 @@
             );
         }
 
-        // --- COMPOSANT RÉSULTAT TOTAL ---
+        // ─── COMPOSANT RÉSULTAT TOTAL PDC ───────────────────────────────────────────
         function ResultatTotal({ resultats, debit }) {
             return (
                 <div className="bg-slate-800 rounded-3xl p-6 text-white shadow-xl">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">Récapitulatif réseau série</h3>
                     <div className="flex justify-between items-center border-b border-slate-600 pb-4 mb-4">
                         <span className="text-sm opacity-80">Perte de charge totale</span>
-                        <span className="text-3xl font-black text-sky-300">
-                            {resultats.perteTotal.toFixed(3)} <span className="text-lg font-medium">mCE</span>
-                        </span>
+                        <span className="text-3xl font-black text-sky-300">{resultats.perteTotal.toFixed(3)} <span className="text-lg font-medium">mCE</span></span>
                     </div>
                     <div className="grid grid-cols-3 gap-3 text-sm">
                         <div className="bg-slate-700/50 p-3 rounded-xl">
@@ -230,7 +213,7 @@
             );
         }
 
-        // --- COMPOSANT GRAPHIQUE ---
+        // ─── COMPOSANT GRAPHIQUE PDC ────────────────────────────────────────────────
         function ChartComponent({ troncons, debit }) {
             const canvasRef = useRef(null);
             const chartRef = useRef(null);
@@ -242,68 +225,265 @@
 
                 const maxDebit = parseFloat(debit) * 1.5 || 10;
                 const steps = 30;
-                const labels = [];
-                const dataPoints = [];
+                const labels = [], dataPoints = [];
 
                 for (let i = 0; i <= steps; i++) {
                     const q = (maxDebit / steps) * i;
                     labels.push(q.toFixed(1));
                     if (q === 0) { dataPoints.push(0); continue; }
-
                     const perteTotal = troncons.reduce((sum, t) => {
-                        const r = calculatePDC(
-                            parseFloat(t.diametre),
-                            parseFloat(t.longueur),
-                            q,
-                            parseFloat(t.materiau)
-                        );
-                        return sum + r.perte;
+                        return sum + calculatePDC(parseFloat(t.diametre), parseFloat(t.longueur), q, parseFloat(t.materiau)).perte;
                     }, 0);
                     dataPoints.push(perteTotal.toFixed(3));
                 }
 
                 chartRef.current = new Chart(ctx, {
                     type: 'line',
-                    data: {
-                        labels,
-                        datasets: [{
-                            label: 'Perte totale (mCE)',
-                            data: dataPoints,
-                            borderColor: '#0ea5e9',
-                            backgroundColor: 'rgba(14, 165, 233, 0.1)',
-                            borderWidth: 3,
-                            pointRadius: 0,
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { title: { display: true, text: 'Débit (m³/h)' } },
-                            y: { title: { display: true, text: 'Perte totale (mCE)' }, beginAtZero: true }
-                        }
-                    }
+                    data: { labels, datasets: [{ label: 'Perte totale (mCE)', data: dataPoints, borderColor: '#0ea5e9', backgroundColor: 'rgba(14,165,233,0.1)', borderWidth: 3, pointRadius: 0, fill: true, tension: 0.4 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: 'Débit (m³/h)' } }, y: { title: { display: true, text: 'Perte totale (mCE)' }, beginAtZero: true } } }
                 });
-
                 return () => { if (chartRef.current) { chartRef.current.destroy(); } };
             }, [tronconsSig, debit]);
 
             return (
                 <div className="bg-white rounded-3xl p-4 shadow-xl border border-slate-100 mt-4 h-64">
                     <h3 className="text-sm font-bold text-slate-700 mb-2 uppercase text-center italic">Courbe de perte de charge — réseau complet</h3>
-                    <div className="h-full pb-6">
-                        <canvas ref={canvasRef}></canvas>
+                    <div className="h-full pb-6"><canvas ref={canvasRef}></canvas></div>
+                </div>
+            );
+        }
+
+        // ─── COMPOSANT SECTION NPSH ─────────────────────────────────────────────────
+        function NPSHSection() {
+            const nextRaccordId = useRef(2);
+            const [aspirQ,   setAspirQ]   = useState('');
+            const [aspirD,   setAspirD]   = useState('');
+            const [aspirL,   setAspirL]   = useState('');
+            const [aspirMat, setAspirMat] = useState(DEFAULT_MATERIAU);
+            const [raccords, setRaccords] = useState([{ id: 1, xi: RACCORDS[0].xi, nomIdx: 0, quantite: 1 }]);
+            const [hz,       setHz]       = useState('');
+            const [temp,     setTemp]     = useState('20');
+            const [altitude, setAltitude] = useState('0');
+            const [npshr,    setNpshr]    = useState('');
+
+            const addRaccord = () => {
+                setRaccords(prev => [...prev, { id: nextRaccordId.current++, xi: RACCORDS[0].xi, nomIdx: 0, quantite: 1 }]);
+            };
+            const removeRaccord = (id) => setRaccords(prev => prev.filter(r => r.id !== id));
+            const updateRaccord = (id, field, value) =>
+                setRaccords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+
+            const npshResult = useMemo(() => {
+                const Q   = parseFloat(aspirQ);
+                const D   = parseFloat(aspirD);
+                const L   = parseFloat(aspirL);
+                const T   = parseFloat(temp)     || 20;
+                const alt = parseFloat(altitude) || 0;
+                const Hz  = parseFloat(hz);
+                if (!Q || !D || !L || isNaN(Hz)) return null;
+
+                const pdc    = calculatePDC(D, L, Q, parseFloat(aspirMat));
+                const HfLin  = pdc.perte;
+                const S      = Math.PI * Math.pow((D / 1000) / 2, 2);
+                const V      = (Q / 3600) / S;
+
+                const HfSing = raccords.reduce((sum, r) => {
+                    return sum + r.quantite * r.xi * Math.pow(V, 2) / (2 * 9.81);
+                }, 0);
+
+                const Hf    = HfLin + HfSing;
+                const Pv    = calcPv(T);
+                const rho   = calcRho(T);
+                const Pa    = calcPa(alt);
+                const NPSHd = (Pa - Pv) / (rho * 9.81) + Hz - Hf;
+                const margeNPSH = npshr !== '' ? NPSHd - parseFloat(npshr) : null;
+
+                return { Pa, Pv, rho, HfLin, HfSing, Hf, NPSHd, margeNPSH, V, T, alt };
+            }, [aspirQ, aspirD, aspirL, aspirMat, raccords, hz, temp, altitude, npshr]);
+
+            const margeClass = !npshResult || npshResult.margeNPSH === null ? '' :
+                npshResult.margeNPSH > 0.5  ? 'text-green-400' :
+                npshResult.margeNPSH > 0    ? 'text-orange-400' : 'text-red-400';
+
+            const margeBadge = !npshResult || npshResult.margeNPSH === null ? null :
+                npshResult.margeNPSH > 0.5
+                    ? <span className="bg-green-100 text-green-700 border border-green-300 text-[10px] font-bold px-2 py-0.5 rounded-full">✓ Sécurisé</span>
+                    : npshResult.margeNPSH > 0
+                    ? <span className="bg-orange-100 text-orange-700 border border-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full">⚠ Limite — vérifier</span>
+                    : <span className="bg-red-100 text-red-700 border border-red-300 text-[10px] font-bold px-2 py-0.5 rounded-full">⚠ RISQUE CAVITATION</span>;
+
+            return (
+                <div className="space-y-4">
+
+                    {/* Conduite aspiration */}
+                    <div className="bg-white rounded-3xl p-5 shadow-lg border border-slate-100 space-y-4">
+                        <h3 className="text-sm font-black text-sky-600 uppercase tracking-wide">Conduite d'aspiration</h3>
+                        <div>
+                            <label className="text-xs font-bold text-sky-600 uppercase ml-2">Matériau (Rugosité k)</label>
+                            <select className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                value={aspirMat} onChange={e => setAspirMat(e.target.value)}>
+                                {Object.entries(MATERIAUX).map(([nom, val]) => (
+                                    <option key={nom} value={val}>{nom} — [k = {val} mm]</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Débit (m³/h)</label>
+                                <input type="number" inputMode="decimal" placeholder="25" value={aspirQ}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setAspirQ(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Ø Int (mm)</label>
+                                <input type="number" inputMode="decimal" placeholder="110" value={aspirD}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setAspirD(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Long (m)</label>
+                                <input type="number" inputMode="decimal" placeholder="10" value={aspirL}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setAspirL(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Singularités */}
+                    <div className="bg-white rounded-3xl p-5 shadow-lg border border-slate-100 space-y-3">
+                        <h3 className="text-sm font-black text-sky-600 uppercase tracking-wide">Singularités aspiration</h3>
+                        {raccords.map((r) => (
+                            <div key={r.id} className="flex items-center gap-2">
+                                <select
+                                    className="flex-1 bg-slate-50 border-0 rounded-2xl px-3 py-3 text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                                    value={r.nomIdx}
+                                    onChange={e => {
+                                        const idx = parseInt(e.target.value);
+                                        updateRaccord(r.id, 'nomIdx', idx);
+                                        updateRaccord(r.id, 'xi', RACCORDS[idx].xi);
+                                    }}
+                                >
+                                    {RACCORDS.map((rc, i) => (
+                                        <option key={i} value={i}>{rc.nom} [ξ={rc.xi}]</option>
+                                    ))}
+                                </select>
+                                <input type="number" inputMode="numeric" min="1" placeholder="1" value={r.quantite}
+                                    className="w-16 bg-slate-50 border-0 rounded-2xl px-3 py-3 text-center text-sm focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => updateRaccord(r.id, 'quantite', Math.max(1, parseInt(e.target.value) || 1))} />
+                                {raccords.length > 1 && (
+                                    <button onClick={() => removeRaccord(r.id)}
+                                        className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-100 active:scale-95 transition-all text-xl font-bold leading-none flex-shrink-0">×</button>
+                                )}
+                            </div>
+                        ))}
+                        <button onClick={addRaccord}
+                            className="w-full border-2 border-dashed border-sky-300 text-sky-600 font-bold py-3 rounded-2xl hover:bg-sky-50 active:scale-95 transition-all text-sm">
+                            + Ajouter un raccord
+                        </button>
+                    </div>
+
+                    {/* Conditions d'installation */}
+                    <div className="bg-white rounded-3xl p-5 shadow-lg border border-slate-100 space-y-4">
+                        <h3 className="text-sm font-black text-sky-600 uppercase tracking-wide">Conditions d'installation</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Hz aspiration (m)</label>
+                                <input type="number" inputMode="decimal" placeholder="-3" value={hz}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setHz(e.target.value)} />
+                                <p className="text-[10px] text-slate-400 ml-2 mt-1">+ chargé / − aspiration</p>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Température (°C)</label>
+                                <input type="number" inputMode="decimal" placeholder="20" value={temp}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setTemp(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">Altitude (m)</label>
+                                <input type="number" inputMode="decimal" placeholder="0" value={altitude}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setAltitude(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase ml-2">NPSHr constructeur (m)</label>
+                                <input type="number" inputMode="decimal" placeholder="optionnel" value={npshr}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setNpshr(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Résultat NPSH */}
+                    {npshResult && (
+                        <div className="bg-slate-800 rounded-3xl p-6 text-white shadow-xl space-y-4">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Résultat NPSH</h3>
+
+                            <div className="flex justify-between items-center border-b border-slate-600 pb-4">
+                                <span className="text-sm opacity-80">NPSHd disponible</span>
+                                <span className="text-3xl font-black text-sky-300">
+                                    {npshResult.NPSHd.toFixed(3)} <span className="text-lg font-medium">m</span>
+                                </span>
+                            </div>
+
+                            {npshResult.margeNPSH !== null && (
+                                <div className="flex justify-between items-center border-b border-slate-600 pb-4">
+                                    <div>
+                                        <p className="text-sm opacity-80">Marge NPSHd − NPSHr</p>
+                                        <div className="mt-1">{margeBadge}</div>
+                                    </div>
+                                    <span className={`text-2xl font-black ${margeClass}`}>
+                                        {npshResult.margeNPSH >= 0 ? '+' : ''}{npshResult.margeNPSH.toFixed(3)} m
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-3 gap-2 text-sm">
+                                <div className="bg-slate-700/50 p-3 rounded-xl">
+                                    <p className="text-[10px] opacity-60 uppercase tracking-wider">Hf linéaire</p>
+                                    <p className="font-bold">{npshResult.HfLin.toFixed(3)} m</p>
+                                </div>
+                                <div className="bg-slate-700/50 p-3 rounded-xl">
+                                    <p className="text-[10px] opacity-60 uppercase tracking-wider">Hf singul.</p>
+                                    <p className="font-bold">{npshResult.HfSing.toFixed(3)} m</p>
+                                </div>
+                                <div className="bg-slate-700/50 p-3 rounded-xl">
+                                    <p className="text-[10px] opacity-60 uppercase tracking-wider">Hf total</p>
+                                    <p className="font-bold">{npshResult.Hf.toFixed(3)} m</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-700/30 rounded-2xl p-3 text-[10px] text-slate-400 space-y-1 leading-relaxed">
+                                <p>Pa ({Math.round(npshResult.alt)} m alt.) : <strong className="text-slate-300">{Math.round(npshResult.Pa)} Pa</strong></p>
+                                <p>Pv ({npshResult.T}°C) : <strong className="text-slate-300">{Math.round(npshResult.Pv)} Pa</strong></p>
+                                <p>ρ eau ({npshResult.T}°C) : <strong className="text-slate-300">{npshResult.rho.toFixed(1)} kg/m³</strong></p>
+                                <p>Vitesse aspiration : <strong className="text-slate-300">{npshResult.V.toFixed(2)} m/s</strong></p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Note méthode */}
+                    <div className="bg-blue-100/50 border border-blue-200 rounded-2xl p-4 text-[11px] text-blue-900 leading-relaxed shadow-sm">
+                        <h4 className="font-bold uppercase mb-2 flex items-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            Paramètres de calcul
+                        </h4>
+                        <ul className="space-y-1 opacity-90">
+                            <li>• <strong>NPSHd</strong> = (Pa − Pv) / (ρ·g) + Hz − Hf</li>
+                            <li>• <strong>Pv</strong> : formule de Magnus | <strong>Pa</strong> : formule barométrique</li>
+                            <li>• <strong>Hf linéaire</strong> : Darcy-Weisbach | <strong>Hf singulières</strong> : méthode ξ·V²/2g</li>
+                            <li>• Hz &gt; 0 (pompe en charge) / Hz &lt; 0 (pompe au-dessus du niveau)</li>
+                            <li>• Marge de sécurité recommandée : <strong>≥ 0.5 m</strong></li>
+                        </ul>
                     </div>
                 </div>
             );
         }
 
-        // --- COMPOSANT PRINCIPAL APP ---
+        // ─── COMPOSANT PRINCIPAL APP ────────────────────────────────────────────────
         function App() {
             const nextId = useRef(2);
+            const [activeTab, setActiveTab] = useState('pdc');
             const [troncons, setTroncons] = useState([
                 { id: 1, materiau: DEFAULT_MATERIAU, diametre: '', longueur: '' }
             ]);
@@ -317,18 +497,14 @@
             const addTroncon = () => {
                 setTroncons(prev => [...prev, { id: nextId.current++, materiau: DEFAULT_MATERIAU, diametre: '', longueur: '' }]);
             };
-
             const removeTroncon = (id) => setTroncons(prev => prev.filter(t => t.id !== id));
-
             const updateTroncon = (id, field, value) =>
                 setTroncons(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
 
             const resultats = useMemo(() => {
                 const Q = parseFloat(debit);
                 if (!Q || Q <= 0) return null;
-                const allFilled = troncons.every(t => parseFloat(t.diametre) > 0 && parseFloat(t.longueur) > 0);
-                if (!allFilled) return null;
-
+                if (!troncons.every(t => parseFloat(t.diametre) > 0 && parseFloat(t.longueur) > 0)) return null;
                 const parTroncon = troncons.map(t => ({
                     id: t.id,
                     ...calculatePDC(parseFloat(t.diametre), parseFloat(t.longueur), Q, parseFloat(t.materiau))
@@ -343,63 +519,64 @@
                         <h1 className="text-2xl font-black text-slate-800 tracking-tight">CALCULATEUR PDC</h1>
                     </header>
 
-                    {/* Débit global */}
-                    <div className="bg-white rounded-3xl px-6 py-5 shadow-xl border border-slate-100 mb-5">
-                        <label className="text-xs font-bold text-sky-600 uppercase ml-2">Débit global (m³/h)</label>
-                        <input
-                            type="number" inputMode="decimal" placeholder="25"
-                            value={debit}
-                            className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
-                            onChange={e => setDebit(e.target.value)}
-                        />
-                    </div>
-
-                    {/* Liste des tronçons */}
-                    <div className="space-y-4">
-                        {troncons.map((t, index) => (
-                            <TronconCard
-                                key={t.id}
-                                troncon={t}
-                                index={index}
-                                total={troncons.length}
-                                onUpdate={(field, value) => updateTroncon(t.id, field, value)}
-                                onRemove={() => removeTroncon(t.id)}
-                                resultat={resultats ? resultats.parTroncon.find(r => r.id === t.id) : null}
-                            />
+                    {/* Tab bar */}
+                    <div className="flex bg-white rounded-2xl p-1 shadow-md border border-slate-100 mb-5">
+                        {[['pdc', 'Pertes de charge'], ['npsh', 'NPSH']].map(([tab, label]) => (
+                            <button key={tab} onClick={() => setActiveTab(tab)}
+                                className={`flex-1 py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all
+                                    ${activeTab === tab ? 'bg-sky-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
+                                {label}
+                            </button>
                         ))}
                     </div>
 
-                    {/* Bouton ajouter */}
-                    <button
-                        onClick={addTroncon}
-                        className="w-full mt-4 border-2 border-dashed border-sky-300 text-sky-600 font-bold py-4 rounded-2xl hover:bg-sky-50 active:scale-95 transition-all text-sm"
-                    >
-                        + Ajouter un tronçon
-                    </button>
-
-                    {/* Résultats */}
-                    {resultats && (
+                    {/* ── Onglet PDC ─────────────────────────────────────────────── */}
+                    {activeTab === 'pdc' && (
                         <>
-                            <div className="mt-6">
-                                <ResultatTotal resultats={resultats} debit={debit} />
+                            <div className="bg-white rounded-3xl px-6 py-5 shadow-xl border border-slate-100 mb-5">
+                                <label className="text-xs font-bold text-sky-600 uppercase ml-2">Débit global (m³/h)</label>
+                                <input type="number" inputMode="decimal" placeholder="25" value={debit}
+                                    className="w-full bg-slate-50 border-0 rounded-2xl px-4 py-3 mt-1 focus:ring-2 focus:ring-sky-500 outline-none"
+                                    onChange={e => setDebit(e.target.value)} />
                             </div>
 
-                            <ChartComponent troncons={troncons} debit={debit} />
-
-                            <div className="mt-4 bg-blue-100/50 border border-blue-200 rounded-2xl p-4 text-[11px] text-blue-900 leading-relaxed shadow-sm">
-                                <h4 className="font-bold uppercase mb-2 flex items-center gap-2">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                    Paramètres de calcul
-                                </h4>
-                                <ul className="space-y-1 opacity-90">
-                                    <li>• <strong>Loi :</strong> Darcy-Weisbach (Friction : Swamee-Jain)</li>
-                                    <li>• <strong>Fluide :</strong> Eau à 20°C (ν = 1.004 × 10⁻⁶ m²/s)</li>
-                                    <li>• <strong>Laminaire</strong> si Re &lt; 2 300 → f = 64/Re</li>
-                                    <li>• <strong>Réseau série</strong> — même débit dans tous les tronçons</li>
-                                </ul>
+                            <div className="space-y-4">
+                                {troncons.map((t, index) => (
+                                    <TronconCard key={t.id} troncon={t} index={index} total={troncons.length}
+                                        onUpdate={(field, value) => updateTroncon(t.id, field, value)}
+                                        onRemove={() => removeTroncon(t.id)}
+                                        resultat={resultats ? resultats.parTroncon.find(r => r.id === t.id) : null} />
+                                ))}
                             </div>
+
+                            <button onClick={addTroncon}
+                                className="w-full mt-4 border-2 border-dashed border-sky-300 text-sky-600 font-bold py-4 rounded-2xl hover:bg-sky-50 active:scale-95 transition-all text-sm">
+                                + Ajouter un tronçon
+                            </button>
+
+                            {resultats && (
+                                <>
+                                    <div className="mt-6"><ResultatTotal resultats={resultats} debit={debit} /></div>
+                                    <ChartComponent troncons={troncons} debit={debit} />
+                                    <div className="mt-4 bg-blue-100/50 border border-blue-200 rounded-2xl p-4 text-[11px] text-blue-900 leading-relaxed shadow-sm">
+                                        <h4 className="font-bold uppercase mb-2 flex items-center gap-2">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                            Paramètres de calcul
+                                        </h4>
+                                        <ul className="space-y-1 opacity-90">
+                                            <li>• <strong>Loi :</strong> Darcy-Weisbach (Friction : Swamee-Jain)</li>
+                                            <li>• <strong>Fluide :</strong> Eau à 20°C (ν = 1.004 × 10⁻⁶ m²/s)</li>
+                                            <li>• <strong>Laminaire</strong> si Re &lt; 2 300 → f = 64/Re</li>
+                                            <li>• <strong>Réseau série</strong> — même débit dans tous les tronçons</li>
+                                        </ul>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
+
+                    {/* ── Onglet NPSH ────────────────────────────────────────────── */}
+                    {activeTab === 'npsh' && <NPSHSection />}
 
                     {deferredPrompt && (
                         <div className="fixed bottom-4 left-4 right-4 bg-white p-4 rounded-2xl shadow-2xl border-2 border-sky-500 flex items-center justify-between z-50">
@@ -407,7 +584,8 @@
                                 <img src="icon.png" alt="icon" className="w-10 h-10 rounded-lg" />
                                 <p className="font-bold text-slate-800 text-sm">Installer l'app</p>
                             </div>
-                            <button onClick={() => { deferredPrompt.prompt(); setDeferredPrompt(null); }} className="bg-sky-600 text-white font-bold px-4 py-2 rounded-xl text-xs">INSTALLER</button>
+                            <button onClick={() => { deferredPrompt.prompt(); setDeferredPrompt(null); }}
+                                className="bg-sky-600 text-white font-bold px-4 py-2 rounded-xl text-xs">INSTALLER</button>
                         </div>
                     )}
                 </div>
