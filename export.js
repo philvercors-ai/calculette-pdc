@@ -23,19 +23,33 @@
     }
 
     function generer(el, filename) {
-        el.style.cssText = 'position:absolute;left:-9999px;top:0;width:190mm;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;';
+        // Overlay de chargement (masque le flash de l'élément à capturer)
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = '<div style="background:white;padding:24px 32px;border-radius:16px;text-align:center;font-family:ui-sans-serif,sans-serif;box-shadow:0 20px 60px rgba(0,0,0,0.3);"><div style="font-size:14px;font-weight:700;color:#0ea5e9;margin-bottom:4px;">Génération du rapport PDF...</div><div style="font-size:12px;color:#64748b;">Veuillez patienter</div></div>';
+        document.body.appendChild(overlay);
+
+        // L'élément doit être à une position réelle pour que html2canvas le rende
+        el.style.cssText = 'position:fixed;top:0;left:0;width:190mm;background:white;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;';
         document.body.appendChild(el);
-        html2pdf()
-            .set({
-                margin:       [8, 8, 8, 8],
-                filename:     filename,
-                image:        { type: 'jpeg', quality: 0.97 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            })
-            .from(el)
-            .save()
-            .then(() => document.body.removeChild(el));
+
+        // Double rAF : s'assure que le browser a peint l'élément avant la capture
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            html2pdf()
+                .set({
+                    margin:      [8, 8, 8, 8],
+                    filename:    filename,
+                    image:       { type: 'jpeg', quality: 0.97 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: -window.scrollY },
+                    jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                })
+                .from(el)
+                .save()
+                .then(() => {
+                    document.body.removeChild(el);
+                    document.body.removeChild(overlay);
+                });
+        }));
     }
 
     // ── Styles partagés ────────────────────────────────────────────────────────
