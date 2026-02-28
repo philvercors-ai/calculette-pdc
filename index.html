@@ -20,6 +20,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="export.js"></script>
 
     <style>
         :root { --safe-top: env(safe-area-inset-top); }
@@ -579,6 +581,13 @@
                                 <p>Vitesse aspiration : <strong className="text-slate-300">{npshResult.V.toFixed(2)} m/s</strong></p>
                             </div>
                         </div>
+
+                        <button
+                            onClick={() => window.exportNPSHReport({ aspirQ, aspirD, aspirL, aspirMat, raccords, raccordsList: RACCORDS, hz, temp, altitude, npshr, npshResult, materiaux: MATERIAUX })}
+                            className="w-full bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold py-3 rounded-2xl shadow-md active:scale-95 transition-all text-sm flex items-center justify-center gap-2">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Exporter rapport PDF
+                        </button>
                         </>
                     )}
 
@@ -677,6 +686,14 @@
                             {resultats && (
                                 <>
                                     <div className="mt-6"><ResultatTotal resultats={resultats} debit={debit} /></div>
+
+                                    <button
+                                        onClick={() => window.exportPDCReport({ debit, troncons, resultats, materiaux: MATERIAUX })}
+                                        className="w-full mt-3 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold py-3 rounded-2xl shadow-md active:scale-95 transition-all text-sm flex items-center justify-center gap-2">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                        Exporter rapport PDF
+                                    </button>
+
                                     <ChartComponent troncons={troncons} debit={debit} />
                                     <div className="mt-4 bg-blue-100/50 border border-blue-200 rounded-2xl p-4 text-[11px] text-blue-900 leading-relaxed shadow-sm">
                                         <h4 className="font-bold uppercase mb-2 flex items-center gap-2">

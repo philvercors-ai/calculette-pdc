@@ -1,13 +1,15 @@
-const CACHE_NAME = 'pdc-app-v3';
+const CACHE_NAME = 'pdc-app-v4';
 const URLS_TO_CACHE = [
   './',
   './index.html',
+  './export.js',
   './icon.png',
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
   'https://cdn.tailwindcss.com',
-  'https://cdn.jsdelivr.net/npm/chart.js'
+  'https://cdn.jsdelivr.net/npm/chart.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
 ];
 
 self.addEventListener('install', event => {
