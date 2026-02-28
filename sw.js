@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pdc-app-v5';
+const CACHE_NAME = 'pdc-app-v6';
 const URLS_TO_CACHE = [
   './',
   './index.html',
