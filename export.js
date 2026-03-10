@@ -66,13 +66,16 @@
         document.body.appendChild(overlay);
 
         const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:0;left:0;width:820px;height:0;opacity:0;pointer-events:none;border:none;';
+        iframe.style.cssText = 'position:absolute;left:-9999px;top:0;width:820px;height:5000px;opacity:0;pointer-events:none;border:none;';
         document.body.appendChild(iframe);
 
         const doc = iframe.contentDocument || iframe.contentWindow.document;
         doc.open();
         doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${BASE_STYLES}</style></head><body>${contentHTML}</body></html>`);
         doc.close();
+        // Ajuste la hauteur réelle du contenu pour que html2canvas capture tout
+        const realH = iframe.contentDocument.body.scrollHeight;
+        if (realH > 0) iframe.style.height = (realH + 50) + 'px';
 
         setTimeout(() => {
             html2pdf()
