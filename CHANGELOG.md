@@ -1,5 +1,17 @@
 # Changelog — Calculateur PDC
 
+## v2.1 — export.js — 2026-03-13
+### Correction page blanche
+- **Cause** : `left:-9999px` → `getBoundingClientRect().left = -9999` → html2canvas
+  capturait une zone hors-écran → canvas vide → PDF page blanche.
+- **Fix** : wrapper `position:fixed;top:0;left:0;overflow:hidden;width:0;height:0`
+  contenant le `#pdc-export` sans décalage. html2canvas voit le container à (0,0) →
+  capture correcte.
+- Ajout `scrollX:0; scrollY:0` dans les options html2canvas pour fiabiliser.
+- SW : `pdc-app-v11` → `pdc-app-v12`
+
+---
+
 ## v2.0 — export.js — 2026-03-13
 ### Correction critique
 - **Abandon de l'iframe** pour la génération PDF : html2canvas ne calcule pas

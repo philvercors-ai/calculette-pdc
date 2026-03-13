@@ -1,6 +1,7 @@
-// ─── export.js — v2.0 — Génération de rapports PDF ───────────────────────────
-// Stratégie : div hors-écran dans le document principal (plus fiable qu'iframe
-// avec html2canvas) + CSS scopé #pdc-export pour éviter tout conflit Tailwind.
+// ─── export.js — v2.1 — Génération de rapports PDF ───────────────────────────
+// Stratégie : div dans un wrapper overflow:hidden à position:fixed top:0 left:0.
+// html2canvas reçoit getBoundingClientRect() à (0,0) → capture correcte.
+// left:-9999px causait page blanche (html2canvas capturait une zone hors-écran).
 (function () {
     'use strict';
 
@@ -156,12 +157,16 @@
         styleEl.textContent = SCOPED_STYLES;
         document.head.appendChild(styleEl);
 
-        // Créer le conteneur hors-écran DANS le document principal
+        // Wrapper invisible en haut-gauche : overflow:hidden + taille 0
+        // → container dedans a getBoundingClientRect() à (0,0) → html2canvas OK
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:99999;';
         const container = document.createElement('div');
         container.id = 'pdc-export';
-        container.style.cssText = 'position:absolute;left:-9999px;top:0;';
+        container.style.cssText = 'width:780px;';
         container.innerHTML = contentHTML;
-        document.body.appendChild(container);
+        wrapper.appendChild(container);
+        document.body.appendChild(wrapper);
 
         setTimeout(() => {
             html2pdf()
@@ -169,20 +174,20 @@
                     margin:      [10, 10, 10, 10],
                     filename:    filename,
                     image:       { type: 'jpeg', quality: 0.97 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false },
+                    html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
                     jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 })
                 .from(container)
                 .save()
                 .then(() => {
                     document.head.removeChild(styleEl);
-                    document.body.removeChild(container);
+                    document.body.removeChild(wrapper);
                     document.body.removeChild(overlay);
                 })
                 .catch(err => {
                     console.error('PDF error:', err);
                     document.head.removeChild(styleEl);
-                    document.body.removeChild(container);
+                    document.body.removeChild(wrapper);
                     document.body.removeChild(overlay);
                 });
         }, 400);
