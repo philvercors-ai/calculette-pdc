@@ -27,8 +27,8 @@
         #pdc-export, #pdc-export * { box-sizing: border-box; margin: 0; padding: 0; }
         #pdc-export {
             font-family: ui-sans-serif, system-ui, Arial, sans-serif;
-            background: #f8fafc; font-size: 13px; color: #0f172a; padding: 28px;
-            width: 780px;
+            background: #f8fafc; font-size: 13px; color: #0f172a; padding: 20px;
+            width: 700px;
         }
 
         /* ── En-tête centré ── */
@@ -163,7 +163,7 @@
         wrapper.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:99999;';
         const container = document.createElement('div');
         container.id = 'pdc-export';
-        container.style.cssText = 'width:780px;';
+        container.style.cssText = 'width:700px;';
         container.innerHTML = contentHTML;
         wrapper.appendChild(container);
         document.body.appendChild(wrapper);
@@ -171,7 +171,7 @@
         setTimeout(() => {
             html2pdf()
                 .set({
-                    margin:      [10, 10, 10, 10],
+                    margin:      [8, 8, 8, 8],
                     filename:    filename,
                     image:       { type: 'jpeg', quality: 0.97 },
                     html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },

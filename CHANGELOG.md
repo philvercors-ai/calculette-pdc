@@ -1,5 +1,15 @@
 # Changelog — Calculateur PDC
 
+## v2.2 — export.js + index.html — 2026-03-13
+### Centrage A4 + Info version
+- Largeur container réduite de 780px à **700px** (A4 utilisable ~718px à 96dpi).
+- Padding interne 28px → 20px, marges jsPDF 10mm → 8mm : contenu centré sur A4.
+- Composant `VersionInfo` dans l'app : badge "v2.1 · Historique versions" ouvre un
+  modal avec les 4 dernières versions et notes de changement.
+- SW : `pdc-app-v12` → `pdc-app-v13`
+
+---
+
 ## v2.1 — export.js — 2026-03-13
 ### Correction page blanche
 - **Cause** : `left:-9999px` → `getBoundingClientRect().left = -9999` → html2canvas
