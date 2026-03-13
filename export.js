@@ -1,4 +1,6 @@
-// ─── export.js — Génération de rapports PDF ────────────────────────────────
+// ─── export.js — v2.0 — Génération de rapports PDF ───────────────────────────
+// Stratégie : div hors-écran dans le document principal (plus fiable qu'iframe
+// avec html2canvas) + CSS scopé #pdc-export pour éviter tout conflit Tailwind.
 (function () {
     'use strict';
 
@@ -19,165 +21,147 @@
         return Object.entries(materiaux).find(([, v]) => v === valeur)?.[0] ?? valeur;
     }
 
-    // ── CSS injecté dans l'iframe ──────────────────────────────────────────────
-    const BASE_STYLES = `
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: ui-sans-serif, system-ui, Arial, sans-serif; background: #f8fafc; font-size: 13px; color: #0f172a; padding: 28px; }
-
-        /* ── En-tête centré dans un cadre ── */
-        .header {
-            background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
-            color: white;
-            padding: 28px 32px 24px;
-            border-radius: 16px;
-            margin-bottom: 28px;
-            text-align: center;
-            border: 3px solid #0284c7;
-            box-shadow: 0 4px 16px rgba(14,165,233,0.25);
+    // ── CSS scopé à #pdc-export (aucun conflit avec Tailwind/React) ────────────
+    const SCOPED_STYLES = `
+        #pdc-export, #pdc-export * { box-sizing: border-box; margin: 0; padding: 0; }
+        #pdc-export {
+            font-family: ui-sans-serif, system-ui, Arial, sans-serif;
+            background: #f8fafc; font-size: 13px; color: #0f172a; padding: 28px;
+            width: 780px;
         }
-        .h-logo   { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; opacity: 0.7; text-transform: uppercase; margin-bottom: 6px; }
-        .h-title  { font-size: 26px; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 6px; }
-        .h-sub    { font-size: 11px; opacity: 0.70; margin-bottom: 14px; }
-        .h-info   { display: inline-flex; gap: 16px; background: rgba(255,255,255,0.18); padding: 8px 20px; border-radius: 24px; font-size: 13px; font-weight: 700; }
-        .h-sep    { opacity: 0.4; }
+
+        /* ── En-tête centré ── */
+        #pdc-export .header {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+            color: white; padding: 28px 32px 24px; border-radius: 16px;
+            margin-bottom: 28px; text-align: center;
+            border: 3px solid #0284c7;
+        }
+        #pdc-export .h-logo  { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; opacity: 0.7; text-transform: uppercase; margin-bottom: 6px; }
+        #pdc-export .h-title { font-size: 26px; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 6px; }
+        #pdc-export .h-sub   { font-size: 11px; opacity: 0.70; margin-bottom: 14px; }
+        #pdc-export .h-info  { display: inline-flex; gap: 16px; background: rgba(255,255,255,0.18); padding: 8px 20px; border-radius: 24px; font-size: 13px; font-weight: 700; }
+        #pdc-export .h-sep   { opacity: 0.4; }
 
         /* ── Cartes blanches ── */
-        .card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 20px 22px;
-            margin-bottom: 22px;
+        #pdc-export .card {
+            background: white; border: 1px solid #e2e8f0; border-radius: 14px;
+            padding: 20px 22px; margin-bottom: 22px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.04);
         }
-        .c-label {
+        #pdc-export .c-label {
             font-weight: 900; color: #0ea5e9; font-size: 11px;
             text-transform: uppercase; letter-spacing: 0.1em;
-            margin-bottom: 16px;
-            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
         }
-        .c-label::after { content: ''; flex: 1; height: 2px; background: #e0f2fe; border-radius: 2px; }
+        #pdc-export .c-label::after { content: ''; flex: 1; height: 2px; background: #e0f2fe; border-radius: 2px; }
 
         /* ── Bandeau inputs (débit / diamètre / longueur) ── */
-        .inputs-bar {
-            background: #f0f9ff;
-            border: 1.5px solid #bae6fd;
-            border-radius: 10px;
-            padding: 14px 16px;
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            margin-bottom: 16px;
+        #pdc-export .inputs-bar {
+            background: #f0f9ff; border: 1.5px solid #bae6fd; border-radius: 10px;
+            padding: 14px 16px; display: flex; justify-content: space-around;
+            align-items: center; margin-bottom: 16px;
         }
-        .inp-item { text-align: center; }
-        .inp-lbl  { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #0369a1; opacity: 0.75; margin-bottom: 3px; }
-        .inp-val  { font-size: 22px; font-weight: 900; color: #0284c7; line-height: 1; }
-        .inp-unit { font-size: 12px; font-weight: 500; color: #64748b; }
-        .inp-sep  { width: 1px; height: 36px; background: #bae6fd; }
+        #pdc-export .inp-item { text-align: center; }
+        #pdc-export .inp-lbl  { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #0369a1; opacity: 0.75; margin-bottom: 3px; }
+        #pdc-export .inp-val  { font-size: 22px; font-weight: 900; color: #0284c7; line-height: 1; }
+        #pdc-export .inp-unit { font-size: 12px; font-weight: 500; color: #64748b; }
+        #pdc-export .inp-sep  { width: 1px; height: 36px; background: #bae6fd; }
 
         /* ── Résultats tronçon ── */
-        .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .res-cell { background: #f8fafc; border-radius: 10px; padding: 12px 14px; border: 1px solid #e2e8f0; }
-        .res-lbl  { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b; margin-bottom: 5px; }
-        .res-val  { font-size: 20px; font-weight: 900; color: #0f172a; line-height: 1.1; }
-        .res-unit { font-size: 12px; font-weight: 400; color: #94a3b8; }
-        /* Vitesse — mise en avant principale */
-        .vit-cell { background: #fffbeb; border: 1.5px solid #fde68a; }
-        .vit-val  { font-size: 26px; font-weight: 900; color: #d97706; }
+        #pdc-export .res-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        #pdc-export .res-cell { background: #f8fafc; border-radius: 10px; padding: 12px 14px; border: 1px solid #e2e8f0; }
+        #pdc-export .res-lbl  { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b; margin-bottom: 5px; }
+        #pdc-export .res-val  { font-size: 20px; font-weight: 900; color: #0f172a; line-height: 1.1; }
+        #pdc-export .res-unit { font-size: 12px; font-weight: 400; color: #94a3b8; }
+        #pdc-export .vit-cell { background: #fffbeb; border: 1.5px solid #fde68a; }
+        #pdc-export .vit-val  { font-size: 26px; font-weight: 900; color: #d97706; }
 
         /* ── Carte résultat total (sombre) ── */
-        .dark {
-            background: #0f172a;
-            color: white;
-            border-radius: 16px;
-            padding: 28px 32px;
-            margin-bottom: 28px;
-            text-align: center;
+        #pdc-export .dark {
+            background: #0f172a; color: white; border-radius: 16px;
+            padding: 28px 32px; margin-bottom: 28px; text-align: center;
         }
-        .d-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.45; margin-bottom: 8px; }
-        .d-value { font-size: 52px; font-weight: 900; color: #38bdf8; line-height: 1; margin-bottom: 4px; }
-        .d-unit  { font-size: 22px; font-weight: 500; color: #7dd3fc; }
-        .d-sub   { font-size: 12px; opacity: 0.45; margin-top: 4px; }
+        #pdc-export .d-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.45; margin-bottom: 8px; }
+        #pdc-export .d-value { font-size: 52px; font-weight: 900; color: #38bdf8; line-height: 1; margin-bottom: 4px; }
+        #pdc-export .d-unit  { font-size: 22px; font-weight: 500; color: #7dd3fc; }
+        #pdc-export .d-sub   { font-size: 12px; opacity: 0.45; margin-top: 4px; }
 
-        /* Grille récap dark */
-        .grid3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 20px; }
-        .cell    { background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; text-align: center; }
-        .cl      { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.4; margin-bottom: 5px; }
-        .cv      { font-weight: 900; font-size: 17px; }
+        /* ── Grilles ── */
+        #pdc-export .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+        #pdc-export .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 20px; }
+        #pdc-export .cell  { background: rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; text-align: center; }
+        #pdc-export .cl    { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.4; margin-bottom: 5px; }
+        #pdc-export .cv    { font-weight: 900; font-size: 17px; }
+        #pdc-export .cellW { background: #f0f9ff; border-radius: 10px; padding: 12px 14px; border: 1px solid #e0f2fe; }
+        #pdc-export .sl    { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px; }
+        #pdc-export .sv    { font-weight: 900; font-size: 18px; color: #0f172a; }
+        #pdc-export .sv-unit { font-weight: 400; font-size: 13px; color: #64748b; }
 
-        /* Grille 2 cols (NPSH) */
-        .grid2   { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-        .cellW   { background: #f0f9ff; border-radius: 10px; padding: 12px 14px; border: 1px solid #e0f2fe; }
-        .sl      { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px; }
-        .sv      { font-weight: 900; font-size: 18px; color: #0f172a; }
-        .sv-unit { font-weight: 400; font-size: 13px; color: #64748b; }
+        /* ── Séparateurs ── */
+        #pdc-export .divider { border: none; border-top: 1px solid rgba(255,255,255,0.10); margin: 18px 0; }
+        #pdc-export .divL    { border: none; border-top: 1px solid #e2e8f0; margin: 14px 0; }
 
-        /* Séparateurs */
-        .divider { border: none; border-top: 1px solid rgba(255,255,255,0.10); margin: 18px 0; }
-        .divL    { border: none; border-top: 1px solid #e2e8f0; margin: 14px 0; }
+        /* ── En-tête tronçon ── */
+        #pdc-export .t-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        #pdc-export .t-num  { font-weight: 900; color: #0284c7; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
+        #pdc-export .t-mat  { color: #64748b; font-size: 12px; font-style: italic; }
+        #pdc-export .t-note { font-size: 11px; color: #94a3b8; text-align: right; margin-top: 10px; font-style: italic; }
 
-        /* En-tête tronçon */
-        .t-head  { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-        .t-num   { font-weight: 900; color: #0284c7; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .t-mat   { color: #64748b; font-size: 12px; font-style: italic; }
-        .t-note  { font-size: 11px; color: #94a3b8; text-align: right; margin-top: 10px; font-style: italic; }
-
-        /* Badges */
-        .badge   { display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 100px; }
+        /* ── Badges ── */
+        #pdc-export .badge { display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 100px; }
 
         /* ── Graphique — évite la coupure entre pages ── */
-        .chart-card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 18px 22px;
-            margin-bottom: 22px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-            page-break-inside: avoid;
-            break-inside: avoid;
+        #pdc-export .chart-card {
+            background: white; border: 1px solid #e2e8f0; border-radius: 14px;
+            padding: 18px 22px; margin-bottom: 22px;
+            page-break-inside: avoid; break-inside: avoid;
         }
-        .chart-title {
+        #pdc-export .chart-title {
             font-weight: 900; color: #0ea5e9; font-size: 11px;
             text-transform: uppercase; letter-spacing: 0.1em;
             margin-bottom: 14px; text-align: center;
             display: flex; align-items: center; gap: 8px;
         }
-        .chart-title::before, .chart-title::after { content: ''; flex: 1; height: 2px; background: #e0f2fe; border-radius: 2px; }
-        .chart-img { width: 100%; border-radius: 8px; display: block; }
+        #pdc-export .chart-title::before,
+        #pdc-export .chart-title::after { content: ''; flex: 1; height: 2px; background: #e0f2fe; border-radius: 2px; }
+        #pdc-export .chart-img { width: 100%; border-radius: 8px; display: block; }
 
         /* ── Marge NPSH ── */
-        .marge-row   { display: flex; justify-content: space-between; align-items: center; }
-        .marge-value { font-size: 30px; font-weight: 900; }
-        .npsh-meta   { font-size: 11px; opacity: 0.40; margin-top: 16px; line-height: 1.9; text-align: center; }
+        #pdc-export .marge-row   { display: flex; justify-content: space-between; align-items: center; }
+        #pdc-export .marge-value { font-size: 30px; font-weight: 900; }
+        #pdc-export .npsh-meta   { font-size: 11px; opacity: 0.40; margin-top: 16px; line-height: 1.9; text-align: center; }
 
         /* ── Note méthode ── */
-        .info { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 14px 18px; margin-top: 22px; font-size: 11px; color: #0369a1; line-height: 1.8; }
-        .info strong { font-size: 11px; }
+        #pdc-export .info { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 14px 18px; margin-top: 22px; font-size: 11px; color: #0369a1; line-height: 1.8; }
 
         /* ── Tableau raccords ── */
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th { padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; background: #f1f5f9; letter-spacing: 0.04em; }
-        td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
-        tr:last-child td { border-bottom: none; }
+        #pdc-export table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        #pdc-export th { padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; color: #64748b; background: #f1f5f9; letter-spacing: 0.04em; }
+        #pdc-export td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+        #pdc-export tr:last-child td { border-bottom: none; }
     `;
 
-    // ── Rendu via iframe isolé ─────────────────────────────────────────────────
+    // ── Rendu via div hors-écran dans le document principal ────────────────────
+    // (plus fiable qu'iframe pour html2canvas : coordonnées correctes, pas d'opacité)
     function generer(contentHTML, filename) {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;font-family:ui-sans-serif,sans-serif;';
         overlay.innerHTML = '<div style="background:white;padding:24px 32px;border-radius:16px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.4);"><div style="font-size:14px;font-weight:700;color:#0ea5e9;margin-bottom:4px;">Génération du rapport PDF...</div><div style="font-size:12px;color:#64748b;">Veuillez patienter</div></div>';
         document.body.appendChild(overlay);
 
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:absolute;left:-9999px;top:0;width:820px;height:5000px;opacity:0;pointer-events:none;border:none;';
-        document.body.appendChild(iframe);
+        // Injecter les styles scopés (aucun conflit possible)
+        const styleEl = document.createElement('style');
+        styleEl.id = '__pdc-export-styles__';
+        styleEl.textContent = SCOPED_STYLES;
+        document.head.appendChild(styleEl);
 
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>${BASE_STYLES}</style></head><body>${contentHTML}</body></html>`);
-        doc.close();
-        const realH = iframe.contentDocument.body.scrollHeight;
-        if (realH > 0) iframe.style.height = (realH + 50) + 'px';
+        // Créer le conteneur hors-écran DANS le document principal
+        const container = document.createElement('div');
+        container.id = 'pdc-export';
+        container.style.cssText = 'position:absolute;left:-9999px;top:0;';
+        container.innerHTML = contentHTML;
+        document.body.appendChild(container);
 
         setTimeout(() => {
             html2pdf()
@@ -185,21 +169,23 @@
                     margin:      [10, 10, 10, 10],
                     filename:    filename,
                     image:       { type: 'jpeg', quality: 0.97 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
+                    html2canvas: { scale: 2, useCORS: true, logging: false },
                     jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 })
-                .from(doc.body)
+                .from(container)
                 .save()
                 .then(() => {
-                    document.body.removeChild(iframe);
+                    document.head.removeChild(styleEl);
+                    document.body.removeChild(container);
                     document.body.removeChild(overlay);
                 })
                 .catch(err => {
                     console.error('PDF error:', err);
-                    document.body.removeChild(iframe);
+                    document.head.removeChild(styleEl);
+                    document.body.removeChild(container);
                     document.body.removeChild(overlay);
                 });
-        }, 600);
+        }, 400);
     }
 
     // ── Template PDC ──────────────────────────────────────────────────────────
@@ -221,8 +207,6 @@
                     <span class="t-num">Tronçon ${i + 1}</span>
                     <span class="t-mat">${mat} — k = ${t.materiau} mm</span>
                 </div>
-
-                <!-- Paramètres d'entrée mis en avant -->
                 <div class="inputs-bar">
                     <div class="inp-item">
                         <div class="inp-lbl">Débit</div>
@@ -239,8 +223,6 @@
                         <div class="inp-val">${t.longueur} <span class="inp-unit">m</span></div>
                     </div>
                 </div>
-
-                <!-- Résultats -->
                 <div class="res-grid">
                     <div class="res-cell vit-cell">
                         <div class="res-lbl">Vitesse d'écoulement</div>
@@ -302,9 +284,9 @@
 
         <div class="info">
             <strong>Paramètres de calcul</strong> —
-            Loi : Darcy-Weisbach &nbsp;|&nbsp; Friction : Swamee-Jain &nbsp;|&nbsp;
-            Fluide : Eau à 20 °C (ν = 1,004 × 10⁻⁶ m²/s) &nbsp;|&nbsp;
-            Laminaire si Re &lt; 2 300 → f = 64/Re &nbsp;|&nbsp;
+            Loi : Darcy-Weisbach | Friction : Swamee-Jain |
+            Fluide : Eau à 20 °C (ν = 1,004 × 10⁻⁶ m²/s) |
+            Laminaire si Re &lt; 2300 → f = 64/Re |
             Réseau série — même débit dans tous les tronçons
         </div>`;
     }
@@ -325,15 +307,15 @@
         let margeHTML = '';
         if (npshResult.margeNPSH !== null) {
             const m = npshResult.margeNPSH;
-            const [color, label] = m > 0.5  ? ['#4ade80', '✓ Sécurisé']
-                                 : m > 0    ? ['#fb923c', '⚠ Limite — vérifier']
-                                 :            ['#f87171', '⚠ RISQUE CAVITATION'];
+            const [color, label] = m > 0.5  ? ['#16a34a', '✓ Sécurisé']
+                                 : m > 0    ? ['#ea580c', '⚠ Limite — vérifier']
+                                 :            ['#dc2626', '⚠ RISQUE CAVITATION'];
             margeHTML = `
                 <hr class="divider">
                 <div class="marge-row">
                     <div>
                         <div class="d-label">Marge NPSHd − NPSHr</div>
-                        <span class="badge" style="font-size:13px;margin-top:6px;display:inline-block;background:${color}22;color:${color};border:1px solid ${color}55;">${label}</span>
+                        <span class="badge" style="font-size:13px;margin-top:6px;display:inline-block;background:${color}22;color:${color};border:1px solid ${color}66;">${label}</span>
                     </div>
                     <div class="marge-value" style="color:${color};">${m >= 0 ? '+' : ''}${m.toFixed(3)} m</div>
                 </div>`;
@@ -361,7 +343,6 @@
 
         <div class="card">
             <div class="c-label">Conduite d'aspiration</div>
-            <!-- Paramètres d'entrée mis en avant -->
             <div class="inputs-bar">
                 <div class="inp-item">
                     <div class="inp-lbl">Débit</div>
@@ -438,9 +419,9 @@
 
         <div class="info">
             <strong>Paramètres de calcul</strong> —
-            NPSHd = (Pa − Pv) / (ρ·g) + Hz − Hf &nbsp;|&nbsp;
-            Pv : formule de Magnus &nbsp;|&nbsp; Pa : formule barométrique &nbsp;|&nbsp;
-            Hf linéaire : Darcy-Weisbach &nbsp;|&nbsp; Hf singulières : ξ·V²/2g &nbsp;|&nbsp;
+            NPSHd = (Pa − Pv) / (ρ·g) + Hz − Hf |
+            Pv : formule de Magnus | Pa : formule barométrique |
+            Hf linéaire : Darcy-Weisbach | Hf singulières : ξ·V²/2g |
             Marge recommandée : <strong>≥ 0,5 m</strong>
         </div>`;
     }

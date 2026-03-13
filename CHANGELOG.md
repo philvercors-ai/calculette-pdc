@@ -1,0 +1,39 @@
+# Changelog — Calculateur PDC
+
+## v2.0 — export.js — 2026-03-13
+### Correction critique
+- **Abandon de l'iframe** pour la génération PDF : html2canvas ne calcule pas
+  correctement les coordonnées d'un élément dans une iframe hors-écran (`left:-9999px`),
+  ce qui produisait un rendu vide → PDF avec des 0.
+- **Nouvelle stratégie** : div `#pdc-export` hors-écran dans le document principal.
+  html2canvas trouve l'élément sans ambiguïté de coordonnées.
+- **CSS scopé** : toutes les règles préfixées par `#pdc-export` → aucun conflit
+  avec Tailwind ou React même si le div est dans le DOM principal.
+
+### Correction Service Worker
+- `sw.js` : cache `pdc-app-v10` → `pdc-app-v11`
+- **Cause du bug récurrent** : le SW servait `export.js` depuis son cache,
+  ignorant toutes les corrections pushées sur GitHub. Incrémenter `CACHE_NAME`
+  force le navigateur à re-télécharger tous les fichiers.
+- **Règle** : à chaque modification de `export.js`, `index.html` ou `sw.js`,
+  il FAUT incrémenter `CACHE_NAME` dans `sw.js`.
+
+---
+
+## v1.3 — export.js — 2026-03-13 (commit 106d40d)
+- Refonte présentation PDF : titre centré dans un cadre, bandeau inputs mis en avant,
+  vitesse en fond jaune, perte totale en 52px, `page-break-inside:avoid` sur graphique.
+- Bug subsistait (SW non mis à jour).
+
+## v1.2 — export.js — 2026-03-10 (commit be3eb0c)
+- Amélioration présentation + capture du graphique Chart.js (canvas.toDataURL).
+- Bug subsistait (SW non mis à jour).
+
+## v1.1 — export.js — 2026-03-10 (commit 4a7aeea)
+### Correction bug "des 0 de partout" — 1re tentative
+- `iframe height:0` → `height:5000px` + ajustement dynamique via `body.scrollHeight`.
+- Fonctionnait en test direct mais rechutait après installation de la PWA
+  (SW servait la vieille version cachée).
+
+## v1.0 — export.js — restauré commit 45a135b
+- Première version iframe avec `height:0` → bug de rendu html2canvas.
